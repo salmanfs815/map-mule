@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="cdc95e1b-4a0e-41c2-9f97-df9cc895c243" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<flow name="getTest" doc:id="42a9483c-fdd2-488c-a3e2-785c34484d30" >
+		<http:listener doc:name="GET /test" doc:id="6ba9c9fe-bffd-4f9f-9a76-d99f3d998f14" config-ref="HTTP_Listener_config" path="/test"/>
+		<set-payload value="Success" doc:name="Set Success Payload" doc:id="04a670b2-7e19-497c-ab8a-f8bb326c2aac" />
+	</flow>
+	<flow name="postSubmission" doc:id="eabe2d61-05a2-43d6-96b3-34326d27accb" >
+		<http:listener doc:name="POST /submission" doc:id="45a09677-d685-4861-bf42-7403a66e2a2b" config-ref="HTTP_Listener_config" path="/submission" allowedMethods="POST"/>
+		<set-payload value="Success" doc:name="Set Success Payload" doc:id="b71c7515-e21b-414b-a006-1d54dde6e535" />
+	</flow>
+	<flow name="postContact" doc:id="24b34d34-41c7-44a5-8333-6c97e314bb14" >
+		<http:listener doc:name="POST /contact" doc:id="8ae521a3-90fe-4c9d-8c28-3f1db2e737d5" config-ref="HTTP_Listener_config" path="/contact" allowedMethods="POST"/>
+		<set-payload value="Success" doc:name="Set Success Payload" doc:id="5c07ea96-d807-40ef-8ef3-0d25c2b70e16" />
+	</flow>
+</mule>
