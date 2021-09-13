@@ -1,22 +1,106 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
-	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
-http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+<mule xmlns:email="http://www.mulesoft.org/schema/mule/email" xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
 	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="cdc95e1b-4a0e-41c2-9f97-df9cc895c243" >
-		<http:listener-connection host="0.0.0.0" port="8081" />
+		<http:listener-connection host="0.0.0.0" port="5000" />
 	</http:listener-config>
+	<email:smtp-config name="AWS_SES_SMTP" doc:name="Email SMTP" doc:id="383ec056-1ed8-4bf4-9c1d-2ab31eeca936" >
+		<email:smtp-connection host="${email.host}" port="${email.port}" user="${email.username}" password="${email.password}" />
+	</email:smtp-config>
 	<flow name="getTest" doc:id="42a9483c-fdd2-488c-a3e2-785c34484d30" >
 		<http:listener doc:name="GET /test" doc:id="6ba9c9fe-bffd-4f9f-9a76-d99f3d998f14" config-ref="HTTP_Listener_config" path="/test"/>
 		<set-payload value="Success" doc:name="Set Success Payload" doc:id="04a670b2-7e19-497c-ab8a-f8bb326c2aac" />
 	</flow>
 	<flow name="postSubmission" doc:id="eabe2d61-05a2-43d6-96b3-34326d27accb" >
-		<http:listener doc:name="POST /submission" doc:id="45a09677-d685-4861-bf42-7403a66e2a2b" config-ref="HTTP_Listener_config" path="/submission" allowedMethods="POST"/>
-		<set-payload value="Success" doc:name="Set Success Payload" doc:id="b71c7515-e21b-414b-a006-1d54dde6e535" />
+		<http:listener doc:name="POST /submission" doc:id="45a09677-d685-4861-bf42-7403a66e2a2b" config-ref="HTTP_Listener_config" path="/submission" allowedMethods="POST">
+			<http:response statusCode="302" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Location" : vars.redirectUrl
+}]]]></http:headers>
+			</http:response>
+			<http:error-response statusCode="302" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Location" : vars.redirectUrl
+}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<set-variable value="#[output application/json --- payload.parts.name.content]" doc:name="Set Name" doc:id="f7b8712b-782e-4497-83d2-9c07758692bd" variableName="name"/>
+		<set-variable value="#[output application/json --- payload.parts.email.content]" doc:name="Set Email" doc:id="58eb396a-96ee-4287-83a3-a9e529b14fb4" variableName="email"/>
+		<set-variable value="#[output application/json --- payload.parts.'type'.content]" doc:name="Set Submission Type" doc:id="640d1ccf-f8d9-4fac-87e1-d295eb704acc" variableName="submissionType"/>
+		<set-variable value="#[output application/json --- payload.parts.title.content]" doc:name="Set Submission Title" doc:id="962f819c-fade-4d15-b554-459b601d4b78" variableName="submissionTitle"/>
+		<set-variable value="#[output application/json --- payload.parts.*submission.*headers.'Content-Disposition'.filename]" doc:name="Set Filenames" doc:id="3f74594d-50ed-4c3b-8806-09d2bb6ca2ba" variableName="filenames"/>
+		<logger level="INFO" doc:name="Log Form Data" doc:id="6ff67736-5df7-41e1-b499-fbc73c3f0dd8" message='#[output application/json&#10;---&#10;{&#10;	"Name": vars.name,&#10;	"Email": vars.email,&#10;	"Submission Type": vars.submissionType,&#10;	"Submission Title": vars.submissionTitle,&#10;	"Files": vars.filenames joinBy ", "&#10;}]' />
+		<email:send doc:name="Email Form Data" doc:id="f1f46029-2c56-4dc5-b4f6-e1d969704b8b" config-ref="AWS_SES_SMTP" fromAddress="${email.fromAddress}" subject="[MAP] Anthology Submission" >
+			<email:to-addresses >
+				<email:to-address value="${email.toAddress}" />
+			</email:to-addresses>
+			<email:body contentType="text/plain" encoding="UTF-8" >
+				<email:content ><![CDATA[#[output text/plain ---
+"New Submission:
+
+Name: $(vars.name)
+Email: $(vars.email)
+Submission Type: $(vars.submissionType)
+Submission Title: $(vars.submissionTitle)
+Files: $(vars.filenames joinBy ", ")"]]]></email:content>
+			</email:body>
+			<email:attachments ><![CDATA[#[{(payload.parts.*submission map ((file, idx) -> {
+    "$(file.headers."Content-Disposition".filename)": file.content
+}))}]]]></email:attachments>
+		</email:send>
+		<set-variable value="https://bc-muslim-anthology-proj.netlify.app/submit-entry?success" doc:name="Set Success Redirect URL" doc:id="8aa19525-ba55-45ea-ae01-a42067fda521" variableName="redirectUrl" />
+		<logger level="INFO" doc:name="Log Success" doc:id="240c03a0-376b-43b1-ac83-b9dd1b8f2ede" message="Successfully sent email" />
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="c10e18c1-c14d-4ff4-a055-ed8f3f6a5cd9" >
+				<set-variable value="https://bc-muslim-anthology-proj.netlify.app/submit-entry?error" doc:name="Set Error Redirect URL" doc:id="287e25b9-c69e-489c-bcc0-efac656a685d" variableName="redirectUrl" />
+			</on-error-continue>
+		</error-handler>
 	</flow>
 	<flow name="postContact" doc:id="24b34d34-41c7-44a5-8333-6c97e314bb14" >
-		<http:listener doc:name="POST /contact" doc:id="8ae521a3-90fe-4c9d-8c28-3f1db2e737d5" config-ref="HTTP_Listener_config" path="/contact" allowedMethods="POST"/>
-		<set-payload value="Success" doc:name="Set Success Payload" doc:id="5c07ea96-d807-40ef-8ef3-0d25c2b70e16" />
+		<http:listener doc:name="POST /contact" doc:id="8ae521a3-90fe-4c9d-8c28-3f1db2e737d5" config-ref="HTTP_Listener_config" path="/contact" allowedMethods="POST">
+			<http:response statusCode="302" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Location" : vars.redirectUrl
+}]]]></http:headers>
+			</http:response>
+			<http:error-response statusCode="302" >
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Location" : vars.redirectUrl
+}]]]></http:headers>
+			</http:error-response>
+		</http:listener>
+		<logger level="INFO" doc:name="Log Form Data" doc:id="342403f2-8326-4228-95d6-09142671135f" message="#[output application/json --- {&#10;	&quot;name&quot;: payload['name'],&#10;	&quot;email&quot;: payload['email'],&#10;	&quot;message&quot;: payload['message']&#10;}]"/>
+		<email:send doc:name="Email Form Data" doc:id="d5739207-7e31-4eb8-b2fa-9a8bb1926f56" config-ref="AWS_SES_SMTP" fromAddress="${email.fromAddress}" subject="[MAP] Contact Form Submission">
+			<email:to-addresses >
+				<email:to-address value="${email.toAddress}" />
+			</email:to-addresses>
+			<email:body contentType="text/plain" encoding="UTF-8">
+				<email:content ><![CDATA[#[output text/plain ---
+"Contact Form:
+
+Name: $(payload['name'] as String default "")
+Email: $(payload['email'] as String default "")
+Message: $(payload['message'] as String default "")"]]]></email:content>
+			</email:body>
+		</email:send>
+		<set-variable value="https://bc-muslim-anthology-proj.netlify.app/contact-us?success" doc:name="Set Success Redirect URL" doc:id="4a7cd614-ab1a-43e5-825c-6b7e1506fa35" variableName="redirectUrl"/>
+		<logger level="INFO" doc:name="Log Success" doc:id="58470609-d5a5-4968-9286-2a03b536187b" message="Successfully sent email"/>
+		<error-handler >
+			<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="14c8f1d6-f584-454d-9d76-8227f7b54d77" >
+				<set-variable value="https://bc-muslim-anthology-proj.netlify.app/contact-us?error" doc:name="Set Error Redirect URL" doc:id="e5166f56-54c2-42a3-8cfc-bd69cd14a273" variableName="redirectUrl" />
+			</on-error-continue>
+		</error-handler>
 	</flow>
 </mule>
